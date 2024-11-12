@@ -25,11 +25,12 @@ class Migrator
     protected $laravel;
 
     /**
-     * Optional subpath for specific migration file.
+     * Optional subpath for a specific migration file or directory
      *
      * @var string|null
      *
      * @example subpath 2000_01_01_000000_create_example_table.php
+     * @example subpath myDirectoryName
      */
     protected $subpath = '';
 
@@ -87,7 +88,7 @@ class Migrator
         $migrationPath = GenerateConfigReader::read('migration');
         $path = (is_array($config) && array_key_exists('path', $config)) ? $config['path'] : $migrationPath->getPath();
 
-        return $this->module->getExtraPath($path);
+        return ! empty($this->subpath) ? $this->module->getExtraPath($path.'/'.$this->subpath) : $this->module->getExtraPath($path);
     }
 
     /**
@@ -98,10 +99,12 @@ class Migrator
      */
     public function getMigrations($reverse = false)
     {
-        if (! empty($this->subpath)) {
-            $files = $this->laravel['files']->glob($this->getPath().'/'.$this->subpath);
+        $path = $this->getPath();
+        if (str_ends_with($path, '.php')) {
+            // provided sub path is a file url
+            $files = $this->laravel['files']->glob($path);
         } else {
-            $files = $this->laravel['files']->glob($this->getPath().'/*_*.php');
+            $files = $this->laravel['files']->glob($path.'/*_*.php');
         }
 
         // Once we have the array of files in the directory we will just remove the
@@ -215,8 +218,14 @@ class Migrator
 
         $class = Str::studly($name);
 
-        if (! class_exists($class) && file_exists($this->getPath().'/'.$file.'.php')) {
-            return include $this->getPath().'/'.$file.'.php';
+        $loadFilePath = $this->getPath().'/'.$file.'.php';
+        $path = $this->getPath();
+        if (str_ends_with($path, '.php')) {
+            $loadFilePath = dirname($this->getPath()).'/'.$file.'.php';
+        }
+
+        if (! class_exists($class) && file_exists($loadFilePath)) {
+            return include $loadFilePath;
         }
 
         return new $class();
@@ -228,8 +237,15 @@ class Migrator
     public function requireFiles(array $files)
     {
         $path = $this->getPath();
-        foreach ($files as $file) {
-            $this->laravel['files']->requireOnce($path.'/'.$file.'.php');
+        if (str_ends_with($path, '.php')) {
+            // provided sub path is a file url, try cutting it off
+            foreach ($files as $file) {
+                $this->laravel['files']->requireOnce(dirname($path).'/'.$file.'.php');
+            }
+        } else {
+            foreach ($files as $file) {
+                $this->laravel['files']->requireOnce($path.'/'.$file.'.php');
+            }
         }
     }
 
